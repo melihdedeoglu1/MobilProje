@@ -1,14 +1,25 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-
+import React, { useState, useEffect, useRef } from 'react';
+import { 
+  View, 
+  Text, 
+  StyleSheet, 
+  TouchableOpacity,
+  AppState, 
+} from 'react-native';
 
 const DEFAULT_TIME = 25 * 60; 
 
 const Timer = () => {
-  
+ 
   const [timeRemaining, setTimeRemaining] = useState(DEFAULT_TIME);
-  
+ 
   const [isRunning, setIsRunning] = useState(false);
+  
+  
+  const [distractionCount, setDistractionCount] = useState(0); 
+  
+ 
+  const appState = useRef(AppState.currentState); 
 
   
   const formatTime = (totalSeconds) => {
@@ -29,12 +40,47 @@ const Timer = () => {
       
       setIsRunning(false);
       alert("Odaklanma Seansı Tamamlandı!");
-  
+      
     }
 
     
     return () => clearInterval(interval);
   }, [isRunning, timeRemaining]); 
+
+  
+  useEffect(() => {
+    const handleAppStateChange = (nextAppState) => {
+      
+      
+      if (
+        appState.current === 'active' && 
+        (nextAppState === 'background' || nextAppState === 'inactive')
+      ) {
+        
+
+        if (isRunning) {
+          
+          setIsRunning(false); 
+          
+          setDistractionCount(prev => prev + 1); 
+          
+          alert("UYARI: Uygulamadan ayrıldınız. Seans duraklatıldı ve dikkat dağınıklığı kaydedildi.");
+        }
+      }
+      
+      
+      appState.current = nextAppState;
+    };
+
+    
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+
+    
+    return () => {
+      subscription.remove();
+    };
+  }, [isRunning]); 
+
 
   
   const handleStartPause = () => {
@@ -44,19 +90,25 @@ const Timer = () => {
   const handleReset = () => {
     setIsRunning(false);
     setTimeRemaining(DEFAULT_TIME);
+    setDistractionCount(0);
   };
 
-  // Buton Metni
+  
   const startPauseText = isRunning ? 'Duraklat' : (timeRemaining === DEFAULT_TIME ? 'Başlat' : 'Devam Et');
 
   return (
     <View style={styles.container}>
       
       <Text style={styles.timerText}>{formatTime(timeRemaining)}</Text>
+      
+      
+      <Text style={styles.distractionText}>
+        Dikkat Dağınıklığı Sayısı: <Text style={{ fontWeight: 'bold', color: '#ff4500' }}>{distractionCount}</Text>
+      </Text>
 
       
       <View style={styles.buttonContainer}>
-       
+        
         <TouchableOpacity style={styles.button} onPress={handleStartPause}>
           <Text style={styles.buttonText}>{startPauseText}</Text>
         </TouchableOpacity>
@@ -81,6 +133,11 @@ const styles = StyleSheet.create({
     color: '#1e90ff',
     marginBottom: 30,
     marginTop: 20,
+  },
+  distractionText: { 
+    fontSize: 16,
+    color: '#888',
+    marginBottom: 15,
   },
   buttonContainer: {
     flexDirection: 'row',
