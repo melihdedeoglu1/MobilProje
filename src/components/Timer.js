@@ -7,18 +7,18 @@ import {
   AppState, 
 } from 'react-native';
 
-const DEFAULT_TIME = 25 * 60; 
 
-const Timer = () => {
- 
+import { saveSession } from '../services/Dataservice'; 
+
+
+const Timer = ({ category }) => { 
+  
+  const DEFAULT_TIME = 25 * 60;
+
   const [timeRemaining, setTimeRemaining] = useState(DEFAULT_TIME);
- 
   const [isRunning, setIsRunning] = useState(false);
-  
-  
   const [distractionCount, setDistractionCount] = useState(0); 
   
- 
   const appState = useRef(AppState.currentState); 
 
   
@@ -26,6 +26,41 @@ const Timer = () => {
     const minutes = String(Math.floor(totalSeconds / 60)).padStart(2, '0');
     const seconds = String(totalSeconds % 60).padStart(2, '0');
     return `${minutes}:${seconds}`;
+  };
+  
+  
+  const handleStopSession = (isFinished = false) => {
+    setIsRunning(false);
+    
+    
+    if (timeRemaining < DEFAULT_TIME) {
+      const sessionDuration = DEFAULT_TIME - timeRemaining; 
+      const formattedDuration = formatTime(sessionDuration);
+
+      const newSession = {
+        id: Date.now(),
+        date: new Date().toISOString(),
+        duration: sessionDuration, 
+        category: category || 'Belirtilmemiş', 
+        distractions: distractionCount,
+        isFinished: isFinished, 
+      };
+
+
+      saveSession(newSession); 
+      
+      
+      alert(
+        `Seans Özeti:\n` +
+        `Süre: ${formattedDuration}\n` +
+        `Kategori: ${newSession.category}\n` +
+        `Dikkat Dağınıklığı Sayısı: ${distractionCount}`
+      );
+    }
+
+    
+    setTimeRemaining(DEFAULT_TIME);
+    setDistractionCount(0);
   };
 
   
@@ -38,14 +73,11 @@ const Timer = () => {
       }, 1000);
     } else if (timeRemaining === 0) {
       
-      setIsRunning(false);
-      alert("Odaklanma Seansı Tamamlandı!");
-      
+      handleStopSession(true); 
     }
 
-    
     return () => clearInterval(interval);
-  }, [isRunning, timeRemaining]); 
+  }, [isRunning, timeRemaining, category]); 
 
   
   useEffect(() => {
@@ -54,53 +86,46 @@ const Timer = () => {
       
       if (
         appState.current === 'active' && 
-        (nextAppState === 'background' || nextAppState === 'inactive')
+        (nextAppState === 'background' || nextAppState === 'inactive') 
       ) {
         
-
         if (isRunning) {
           
           setIsRunning(false); 
-          
-          setDistractionCount(prev => prev + 1); 
+          setDistractionCount(prev => prev + 1);
           
           alert("UYARI: Uygulamadan ayrıldınız. Seans duraklatıldı ve dikkat dağınıklığı kaydedildi.");
         }
       }
       
-      
       appState.current = nextAppState;
     };
 
-    
     const subscription = AppState.addEventListener('change', handleAppStateChange);
 
-    
     return () => {
       subscription.remove();
     };
   }, [isRunning]); 
 
 
-  
+ 
   const handleStartPause = () => {
     setIsRunning(prev => !prev);
   };
 
   const handleReset = () => {
-    setIsRunning(false);
-    setTimeRemaining(DEFAULT_TIME);
-    setDistractionCount(0);
+    
+    handleStopSession(false); 
   };
 
-  
+ 
   const startPauseText = isRunning ? 'Duraklat' : (timeRemaining === DEFAULT_TIME ? 'Başlat' : 'Devam Et');
 
   return (
     <View style={styles.container}>
       
       <Text style={styles.timerText}>{formatTime(timeRemaining)}</Text>
-      
       
       <Text style={styles.distractionText}>
         Dikkat Dağınıklığı Sayısı: <Text style={{ fontWeight: 'bold', color: '#ff4500' }}>{distractionCount}</Text>
@@ -115,7 +140,7 @@ const Timer = () => {
         
         
         <TouchableOpacity style={[styles.button, styles.resetButton]} onPress={handleReset}>
-          <Text style={styles.buttonText}>Sıfırla</Text>
+          <Text style={styles.buttonText}>Bitir / Sıfırla</Text>
         </TouchableOpacity>
       </View>
     </View>
