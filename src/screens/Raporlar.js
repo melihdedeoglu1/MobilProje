@@ -1,11 +1,15 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Dimensions } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, Dimensions, RefreshControl } from 'react-native';
 import { BarChart, PieChart } from 'react-native-chart-kit'; 
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 
+import { getSessions } from '../services/Dataservice';
+import { calculateStats, formatDuration } from '../utils/Statistichelper';
 
 const screenWidth = Dimensions.get('window').width;
 
+const DAYS_OF_WEEK = ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"];
 
 const chartConfig = {
   backgroundGradientFrom: "#fff",
@@ -13,77 +17,130 @@ const chartConfig = {
   decimalPlaces: 0, 
   color: (opacity = 1) => `rgba(0, 100, 255, ${opacity})`, 
   labelColor: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
-  style: {
-    borderRadius: 16
+  propsForBackgroundLines: {
+    strokeDasharray: "",
   }
 };
 
 
-const barData = {
-  labels: ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"],
-  datasets: [{
-    data: [120, 45, 28, 80, 99, 43, 65] 
-  }]
-};
-
-const pieData = [
-  { name: "Kodlama", population: 50, color: "#4F8EF7", legendFontColor: "#7F7F7F", legendFontSize: 15 },
-  { name: "Ders Çalışma", population: 30, color: "#FF7F50", legendFontColor: "#7F7F7F", legendFontSize: 15 },
-  { name: "Proje", population: 20, color: "#3CB371", legendFontColor: "#7F7F7F", legendFontSize: 15 }
-];
-
-
 export default function Raporlar() {
+  const [stats, setStats] = useState({
+      totalToday: 0,
+      totalAllTime: 0,
+      totalDistractions: 0,
+      categoryTotals: {},
+      lastSevenDays: Array(7).fill(0),
+  });
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false); 
   
-  const [totalToday, setTotalToday] = useState('0 dk');
-  const [totalAllTime, setTotalAllTime] = useState('0 dk');
-  const [totalDistractions, setTotalDistractions] = useState(0);
+  const loadData = async () => {
+    setLoading(true);
+    try {
+        const sessions = await getSessions();
+        const calculatedStats = calculateStats(sessions);
+        setStats(calculatedStats);
+    } catch (error) {
+        console.error("Rapor verileri yüklenirken hata:", error);
+    }
+    setLoading(false);
+  };
+  
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [])
+  );
+  
+  const handleRefresh = useCallback(() => {
+    setRefreshing(true);
+    loadData().then(() => setRefreshing(false));
+  }, []);
 
+  if (loading && !refreshing) {
+    return (
+      <View style={styles.loadingContainer}>
+        <Text>Rapor verileri yükleniyor...</Text>
+      </View>
+    );
+  }
   
+  const barData = {
+    labels: DAYS_OF_WEEK,
+    datasets: [{
+      data: stats.lastSevenDays.map(s => Math.floor(s / 60)), 
+    }]
+  };
+  
+  const pieData = Object.keys(stats.categoryTotals).map((category, index) => {
+    const durationInMinutes = Math.floor(stats.categoryTotals[category] / 60);
+    const colors = ["#4F8EF7", "#FF7F50", "#3CB371", "#DA70D6", "#FFA07A", "#20B2AA"]; 
+
+    return {
+      name: category,
+      population: durationInMinutes,
+      color: colors[index % colors.length],
+      legendFontColor: "#7F7F7F",
+      legendFontSize: 15
+    };
+  }).filter(data => data.population > 0); 
+
+
   return (
     <SafeAreaView style={{flex: 1}}>
-        <ScrollView style={styles.scrollContainer} contentContainerStyle={styles.contentContainer}>
-            
+        <ScrollView 
+            style={styles.scrollContainer} 
+            contentContainerStyle={styles.contentContainer}
+            refreshControl={
+                <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+            }
+        >
             <Text style={styles.title}>📈 Odaklanma Raporu</Text>
-            
             
             <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Genel İstatistikler</Text>
                 <View style={styles.statsBox}>
-                    <Text style={styles.statText}>Bugün Toplam Odaklanma Süresi: <Text style={styles.valueText}>{totalToday}</Text> [cite: 28]</Text>
-                    <Text style={styles.statText}>Tüm Zamanların Toplam Odaklanma Süresi: <Text style={styles.valueText}>{totalAllTime}</Text> [cite: 30]</Text>
-                    <Text style={styles.statText}>Toplam Dikkat Dağınıklığı Sayısı: <Text style={styles.valueText}>{totalDistractions}</Text> [cite: 31]</Text>
+                    <Text style={styles.statText}>Bugün Toplam Odaklanma Süresi: <Text style={styles.valueText}>{formatDuration(stats.totalToday)}</Text></Text>
+                    <Text style={styles.statText}>Tüm Zamanların Toplam Odaklanma Süresi: <Text style={styles.valueText}>{formatDuration(stats.totalAllTime)}</Text></Text>
+                    <Text style={styles.statText}>Toplam Dikkat Dağılımı Sayısı: <Text style={styles.valueText}>{stats.totalDistractions}</Text></Text>
                 </View>
             </View>
 
-            
-            <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Son 7 Günlük Odaklanma Süreleri (dk) [cite: 34]</Text>
-                <BarChart
-                    data={barData}
-                    width={screenWidth - 40} 
-                    height={220}
-                    chartConfig={chartConfig}
-                    style={styles.chart}
-                    verticalLabelRotation={30}
-                />
-            </View>
+            {stats.totalAllTime > 0 && barData.datasets[0].data.some(d => d > 0) && (
+                <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Son 7 Günlük Odaklanma Süreleri (dk)</Text>
+                    <BarChart
+                        data={barData}
+                        width={screenWidth - 40}
+                        height={220}
+                        chartConfig={chartConfig}
+                        style={styles.chart}
+                        verticalLabelRotation={0}
+                        fromZero={true}
+                    />
+                </View>
+            )}
 
+            {stats.totalAllTime > 0 && pieData.length > 0 && (
+                <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Kategorilere Göre Dağılım</Text>
+                    <PieChart
+                        data={pieData}
+                        width={screenWidth}
+                        height={220}
+                        chartConfig={chartConfig}
+                        accessor={"population"} 
+                        backgroundColor={"transparent"}
+                        paddingLeft={"15"}
+                        center={[10, 0]}
+                        absolute 
+                    />
+                </View>
+            )}
             
-            <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Kategorilere Göre Dağılım [cite: 35]</Text>
-                <PieChart
-                    data={pieData}
-                    width={screenWidth}
-                    height={220}
-                    chartConfig={chartConfig}
-                    accessor={"population"} 
-                    backgroundColor={"transparent"}
-                    paddingLeft={"15"}
-                    center={[10, 0]}
-                    absolute 
-                />
-            </View>
+            {stats.totalAllTime === 0 && !loading && (
+                 <Text style={styles.noDataText}>Henüz kaydedilmiş bir seansınız bulunmamaktadır.</Text>
+            )}
             
         </ScrollView>
     </SafeAreaView>
@@ -93,10 +150,15 @@ export default function Raporlar() {
 const styles = StyleSheet.create({
     scrollContainer: {
         flex: 1,
-        backgroundColor: '#f8f8f8', 
+        backgroundColor: '#f8f8f8',
     },
     contentContainer: {
         padding: 20,
+        alignItems: 'center',
+    },
+    loadingContainer: {
+        flex: 1,
+        justifyContent: 'center',
         alignItems: 'center',
     },
     title: {
@@ -138,5 +200,11 @@ const styles = StyleSheet.create({
     chart: {
         marginVertical: 8,
         borderRadius: 10,
+    },
+    noDataText: {
+        marginTop: 50,
+        fontSize: 16,
+        color: '#888',
+        textAlign: 'center',
     }
 });
