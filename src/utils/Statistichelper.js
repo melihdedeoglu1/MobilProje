@@ -1,6 +1,4 @@
-
-const DAYS_OF_WEEK = ["Paz", "Pzt", "Sal", "Çar", "Per", "Cum", "Cmt"];
-
+const DAYS_OF_WEEK = ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"];
 
 export const formatDuration = (totalSeconds) => {
     if (totalSeconds < 0) return '00:00';
@@ -14,14 +12,13 @@ export const formatDuration = (totalSeconds) => {
     return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 };
 
-
 export const calculateStats = (sessions) => {
     if (!sessions || sessions.length === 0) {
         return {
             totalToday: 0,
             totalAllTime: 0,
             totalDistractions: 0,
-            categoryDistribution: {},
+            categoryTotals: {},
             lastSevenDays: Array(7).fill(0),
         };
     }
@@ -31,12 +28,8 @@ export const calculateStats = (sessions) => {
     let totalAllTime = 0;
     let totalDistractions = 0;
     
-    
     const categoryTotals = {}; 
-    
-    
     const sevenDayData = Array(7).fill(0); 
-    const todayIndex = new Date().getDay();
 
     sessions.forEach(session => {
         totalAllTime += session.duration;
@@ -45,25 +38,21 @@ export const calculateStats = (sessions) => {
         const sessionDateString = session.date.slice(0, 10);
         const sessionDate = new Date(session.date);
         
-        
         if (sessionDateString === today) {
             totalToday += session.duration;
         }
 
-        
         const category = session.category || 'Diğer';
         categoryTotals[category] = (categoryTotals[category] || 0) + session.duration;
 
-       
         const diffTime = Math.abs(new Date() - sessionDate);
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); // Gün farkı
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
 
         if (diffDays <= 7) {
+            let dayIndex = sessionDate.getDay();          
+            let chartIndex = (dayIndex + 6) % 7;
             
-            let dayIndex = sessionDate.getDay();
-            
-            
-            sevenDayData[dayIndex] += session.duration;
+            sevenDayData[chartIndex] += session.duration;
         }
     });
 
