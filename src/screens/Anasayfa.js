@@ -11,7 +11,7 @@ const AnaSayfa = () => {
   return (
     <SafeAreaView style={{flex: 1, backgroundColor: '#fff'}}> 
         <View style={styles.container}>
-            <Text style={styles.header}>🧠 Odaklanma Zamanlayıcısı</Text>
+            <Text style={styles.header}>Odaklanma Zamanlayıcısı</Text>
             
             <View style={styles.categoryContainer}>
                 <Text style={styles.subHeader}>Kategori Seçin:</Text>

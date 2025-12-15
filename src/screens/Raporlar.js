@@ -3,27 +3,12 @@ import { View, Text, StyleSheet, ScrollView, Dimensions, RefreshControl } from '
 import { BarChart, PieChart } from 'react-native-chart-kit'; 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons'; 
 
 import { getSessions } from '../services/Dataservice';
 import { calculateStats, formatDuration } from '../utils/Statistichelper';
 
 const screenWidth = Dimensions.get('window').width;
-
-const DAYS_OF_WEEK = ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"];
-
-const chartConfig = {
-  backgroundGradientFrom: "#fff",
-  backgroundGradientTo: "#fff",
-  decimalPlaces: 0, 
-  color: (opacity = 1) => `rgba(0, 100, 255, ${opacity})`, 
-  labelColor: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
-  style: {
-    borderRadius: 16
-  },
-  propsForBackgroundLines: {
-    strokeDasharray: "", 
-  }
-};
 
 export default function Raporlar() {
   const [stats, setStats] = useState({
@@ -33,6 +18,7 @@ export default function Raporlar() {
       categoryTotals: {},
       lastSevenDays: Array(7).fill(0),
   });
+  const [lastSession, setLastSession] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false); 
   
@@ -40,10 +26,18 @@ export default function Raporlar() {
     setLoading(true);
     try {
         const sessions = await getSessions();
+
         const calculatedStats = calculateStats(sessions);
         setStats(calculatedStats);
+
+        if (sessions && sessions.length > 0) {
+            setLastSession(sessions[0]);
+        } else {
+            setLastSession(null);
+        }
+
     } catch (error) {
-        console.error("Rapor verileri yüklenirken hata:", error);
+        console.error("Hata:", error);
     }
     setLoading(false);
   };
@@ -59,36 +53,47 @@ export default function Raporlar() {
     loadData().then(() => setRefreshing(false));
   }, []);
 
-  if (loading && !refreshing) {
-    return (
-      <View style={styles.loadingContainer}>
-        <Text>Rapor verileri yükleniyor...</Text>
-      </View>
-    );
-  }
-  
-  const barData = {
-    labels: DAYS_OF_WEEK,
-    datasets: [{
-      data: stats.lastSevenDays.map(s => Math.floor(s / 60)), 
-    }]
-  };
-  
-  const pieData = Object.keys(stats.categoryTotals).map((category, index) => {
-    const durationInMinutes = Math.floor(stats.categoryTotals[category] / 60);
-    const colors = ["#4F8EF7", "#FF7F50", "#3CB371", "#DA70D6", "#FFA07A", "#20B2AA"]; 
+  const maxValueInSeconds = Math.max(...stats.lastSevenDays);
+  const useSeconds = maxValueInSeconds < 180 && maxValueInSeconds > 0;
+  const chartUnit = useSeconds ? " sn" : " dk";
 
+  const chartData = stats.lastSevenDays.map(s => {
+      if (s === 0) return 0;
+      return useSeconds ? s : parseFloat((s / 60).toFixed(1)); 
+  });
+
+  const barData = {
+    labels: ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"],
+    datasets: [{ data: chartData }]
+  };
+
+  const pieDataRaw = Object.keys(stats.categoryTotals).map((category, index) => {
+    const totalSeconds = stats.categoryTotals[category];
+    const colors = ["#4F8EF7", "#FF7F50", "#2ecc71", "#9b59b6", "#f1c40f", "#34495e"]; 
+    
     return {
       name: category,
-      population: durationInMinutes,
+      population: totalSeconds,
       color: colors[index % colors.length],
       legendFontColor: "#7F7F7F",
-      legendFontSize: 13
+      legendFontSize: 12
     };
-  }).filter(data => data.population > 0); 
+  }).filter(data => data.population > 0);
+
+  const totalDuration = pieDataRaw.reduce((acc, curr) => acc + curr.population, 0);
+
+  const chartConfig = {
+    backgroundGradientFrom: "#ffffff",
+    backgroundGradientTo: "#ffffff",
+    decimalPlaces: useSeconds ? 0 : 1, 
+    color: (opacity = 1) => `rgba(79, 142, 247, ${opacity})`, 
+    labelColor: (opacity = 1) => `rgba(0, 0, 0, 0.6)`,
+    style: { borderRadius: 16 },
+    barPercentage: 0.6, 
+  };
 
   return (
-    <SafeAreaView style={{flex: 1}}>
+    <SafeAreaView style={{flex: 1, backgroundColor: '#f4f6f8'}}>
         <ScrollView 
             style={styles.scrollContainer} 
             contentContainerStyle={styles.contentContainer}
@@ -96,126 +101,213 @@ export default function Raporlar() {
                 <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
             }
         >
-            <Text style={styles.title}>📈 Odaklanma Raporu</Text>
-            
-            <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Genel İstatistikler</Text>
-                <View style={styles.statsBox}>
-                    <Text style={styles.statText}>Bugün Toplam: <Text style={styles.valueText}>{formatDuration(stats.totalToday)}</Text></Text>
-                    <Text style={styles.statText}>Tüm Zamanlar: <Text style={styles.valueText}>{formatDuration(stats.totalAllTime)}</Text></Text>
-                    <Text style={styles.statText}>Toplam Dikkat Dağınıklığı: <Text style={styles.valueText}>{stats.totalDistractions}</Text></Text>
+            <View style={styles.headerContainer}>
+                <Text style={styles.title}>📊 Performans Raporu</Text>
+            </View>
+
+            {lastSession && (
+                <View style={[styles.card, styles.lastSessionCard]}>
+                    <View style={styles.cardHeader}>
+                         <Ionicons name="time-outline" size={22} color="#fff" />
+                         <Text style={[styles.cardTitle, {color: '#fff'}]}>Son Seans Özeti</Text>
+                    </View>
+                    <View style={styles.lastSessionInfo}>
+                        <View>
+                            <Text style={styles.lastSessionLabel}>Kategori</Text>
+                            <Text style={styles.lastSessionValue}>{lastSession.category}</Text>
+                        </View>
+                        <View style={{alignItems: 'flex-end'}}>
+                            <Text style={styles.lastSessionLabel}>Süre</Text>
+                            <Text style={styles.lastSessionValue}>{formatDuration(lastSession.duration)}</Text>
+                        </View>
+                    </View>
+                    <Text style={styles.lastSessionDate}>
+                        {new Date(lastSession.date).toLocaleString('tr-TR')}
+                    </Text>
+                </View>
+            )}
+
+            <View style={styles.card}>
+                <View style={styles.cardHeader}>
+                    <Ionicons name="stats-chart" size={20} color="#4F8EF7" />
+                    <Text style={styles.cardTitle}>Genel Durum</Text>
+                </View>
+                <View style={styles.statsRow}>
+                    <View style={styles.statItem}>
+                        <Text style={styles.statLabel}>Bugün</Text>
+                        <Text style={styles.statValue}>{formatDuration(stats.totalToday)}</Text>
+                    </View>
+                    <View style={styles.separator} />
+                    <View style={styles.statItem}>
+                        <Text style={styles.statLabel}>Toplam</Text>
+                        <Text style={styles.statValue}>{formatDuration(stats.totalAllTime)}</Text>
+                    </View>
+                    <View style={styles.separator} />
+                    <View style={styles.statItem}>
+                        <Text style={styles.statLabel}>Dikkat Dağ.</Text>
+                        <Text style={[styles.statValue, {color: '#e74c3c'}]}>{stats.totalDistractions}</Text>
+                    </View>
                 </View>
             </View>
 
-           
-            {stats.totalAllTime > 0 && (
-                <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Son 7 Günlük Süreler (dk)</Text>
+            <View style={styles.card}>
+                <View style={styles.cardHeader}>
+                    <Ionicons name="calendar" size={20} color="#4F8EF7" />
+                    <Text style={styles.cardTitle}>Son 7 Gün ({useSeconds ? 'Saniye' : 'Dakika'})</Text>
+                </View>
+                {stats.totalAllTime > 0 ? (
                     <BarChart
                         data={barData}
-                        width={screenWidth - 40}
+                        width={screenWidth - 60} 
                         height={220}
                         yAxisLabel=""
-                        yAxisSuffix=" dk"
+                        yAxisSuffix={chartUnit} 
                         chartConfig={chartConfig}
                         style={styles.chart}
-                        verticalLabelRotation={0}
-                        fromZero={true}
-                        showBarTops={false}
                         showValuesOnTopOfBars={true} 
+                        fromZero={true}
                     />
-                </View>
-            )}
+                ) : (
+                    <Text style={styles.noDataText}>Veri bulunamadı.</Text>
+                )}
+            </View>
 
-            
-            {stats.totalAllTime > 0 && pieData.length > 0 && (
-                <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Kategorilere Göre Dağılım</Text>
-                    <PieChart
-                        data={pieData}
-                        width={screenWidth}
-                        height={220}
-                        chartConfig={chartConfig}
-                        accessor={"population"} 
-                        backgroundColor={"transparent"}
-                        paddingLeft={"15"}
-                        center={[0, 0]}
-                        
-                    />
+            {stats.totalAllTime > 0 && pieDataRaw.length > 0 && (
+                <View style={styles.card}>
+                    <View style={styles.cardHeader}>
+                        <Ionicons name="pie-chart" size={20} color="#4F8EF7" />
+                        <Text style={styles.cardTitle}>Kategori Dağılımı</Text>
+                    </View>
+                    
+                    <View style={{alignItems: 'center'}}>
+                        <PieChart
+                            data={pieDataRaw}
+                            width={screenWidth - 60}
+                            height={200}
+                            chartConfig={chartConfig}
+                            accessor={"population"} 
+                            backgroundColor={"transparent"}
+                            paddingLeft={"0"}
+                            center={[screenWidth / 4.5, 0]} 
+                            absolute={false}
+                            hasLegend={false} 
+                        />
+                    </View>
+
+                    <View style={styles.customLegendContainer}>
+                        {pieDataRaw.map((item, index) => {
+                            const percent = ((item.population / totalDuration) * 100).toFixed(0);
+                            const durationText = useSeconds 
+                                ? `${item.population} sn` 
+                                : `${(item.population / 60).toFixed(1)} dk`;
+
+                            return (
+                                <View key={index} style={styles.legendItem}>
+                                    <View style={[styles.colorDot, { backgroundColor: item.color }]} />
+                                    <View style={styles.legendTextContainer}>
+                                        <Text style={styles.legendTitle}>
+                                            %{percent} {item.name}
+                                        </Text>
+                                        <Text style={styles.legendSubtitle}>
+                                            ({durationText})
+                                        </Text>
+                                    </View>
+                                </View>
+                            );
+                        })}
+                    </View>
                 </View>
             )}
             
-            {stats.totalAllTime === 0 && !loading && (
-                 <Text style={styles.noDataText}>Henüz kaydedilmiş bir seansınız bulunmamaktadır.</Text>
-            )}
-            
+            <View style={{height: 30}} />
         </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-    scrollContainer: {
-        flex: 1,
-        backgroundColor: '#f8f8f8',
+    scrollContainer: { flex: 1 },
+    contentContainer: { padding: 20 },
+    headerContainer: { marginBottom: 15 },
+    title: { fontSize: 26, fontWeight: 'bold', color: '#2c3e50' },
+    
+    card: {
+        backgroundColor: '#fff', borderRadius: 16, padding: 15, marginBottom: 20,
+        shadowColor: "#000", shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1, shadowRadius: 8, elevation: 5,
     },
-    contentContainer: {
-        padding: 20,
-        alignItems: 'center',
-        paddingBottom: 50
+    lastSessionCard: {
+        backgroundColor: '#4F8EF7',
     },
-    loadingContainer: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
+    lastSessionInfo: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginTop: 10,
+        marginBottom: 10
     },
-    title: {
-        fontSize: 26,
-        fontWeight: 'bold',
-        marginVertical: 15,
-        color: '#2c3e50',
+    lastSessionLabel: {
+        color: 'rgba(255,255,255,0.8)',
+        fontSize: 12,
+        marginBottom: 2
     },
-    section: {
-        width: '100%',
-        marginBottom: 20,
-        backgroundColor: '#fff',
-        padding: 15,
-        borderRadius: 15,
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-        elevation: 3,
-    },
-    sectionTitle: {
+    lastSessionValue: {
+        color: '#fff',
         fontSize: 18,
-        fontWeight: '700',
-        marginBottom: 15,
-        color: '#34495e',
-        borderBottomWidth: 1,
-        borderBottomColor: '#eee',
-        paddingBottom: 5
+        fontWeight: 'bold'
     },
-    statsBox: {
-        alignItems: 'flex-start',
+    lastSessionDate: {
+        color: 'rgba(255,255,255,0.6)',
+        fontSize: 11,
+        textAlign: 'right',
+        fontStyle: 'italic'
     },
-    statText: {
-        fontSize: 16,
-        marginBottom: 10,
-        color: '#555',
+
+    cardHeader: {
+        flexDirection: 'row', alignItems: 'center', marginBottom: 15,
+        borderBottomWidth: 1, borderBottomColor: '#f0f0f0', paddingBottom: 10,
     },
-    valueText: {
-        fontWeight: 'bold',
-        color: '#2980b9',
+    cardTitle: { fontSize: 18, fontWeight: '600', color: '#34495e', marginLeft: 10 },
+
+    statsRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    statItem: { alignItems: 'center', flex: 1 },
+    separator: { width: 1, height: '80%', backgroundColor: '#eee' },
+    statLabel: { fontSize: 12, color: '#95a5a6', marginBottom: 5, textTransform: 'uppercase' },
+    statValue: { fontSize: 18, fontWeight: 'bold', color: '#2c3e50' },
+    
+    chart: { borderRadius: 16, marginVertical: 8 },
+    noDataText: { textAlign: 'center', color: '#95a5a6', marginVertical: 20 },
+
+    customLegendContainer: {
+        marginTop: 10,
+        flexDirection: 'column',
+        width: '100%',
     },
-    chart: {
-        marginVertical: 8,
-        borderRadius: 16,
+    legendItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 12,
+        width: '100%',
     },
-    noDataText: {
-        marginTop: 50,
-        fontSize: 16,
-        color: '#888',
-        textAlign: 'center',
+    colorDot: {
+        width: 12,
+        height: 12,
+        borderRadius: 6,
+        marginRight: 10,
+    },
+    legendTextContainer: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        flex: 1,
+        flexWrap: 'wrap' 
+    },
+    legendTitle: {
+        fontSize: 14,
+        color: '#333',
+        fontWeight: '500',
+    },
+    legendSubtitle: {
+        fontSize: 14,
+        color: '#7f8c8d',
+        marginLeft: 5
     }
 });

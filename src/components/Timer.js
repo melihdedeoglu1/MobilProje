@@ -6,17 +6,16 @@ import {
   TouchableOpacity,
   AppState, 
   Alert,
-  Modal,
-  Dimensions
+  Modal
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { saveSession } from '../services/Dataservice'; 
 
 const Timer = ({ category }) => { 
   
-  const DEFAULT_TIME = 25 * 60; 
-
-  const [timeRemaining, setTimeRemaining] = useState(DEFAULT_TIME);
+  const [initialTime, setInitialTime] = useState(25 * 60);
+  
+  const [timeRemaining, setTimeRemaining] = useState(25 * 60);
   const [isRunning, setIsRunning] = useState(false);
   const [distractionCount, setDistractionCount] = useState(0); 
   const [modalVisible, setModalVisible] = useState(false); 
@@ -30,14 +29,32 @@ const Timer = ({ category }) => {
     return `${minutes}:${seconds}`;
   };
 
-
-  const progressPercent = (timeRemaining / DEFAULT_TIME) * 100;
   
+  const progressPercent = (timeRemaining / initialTime) * 100;
+  
+  
+  const increaseTime = () => {
+    if (!isRunning) {
+        const newTime = initialTime + 15; 
+        setInitialTime(newTime);
+        setTimeRemaining(newTime);
+    }
+  };
+
+  const decreaseTime = () => {
+    if (!isRunning && initialTime > 15) { 
+        const newTime = initialTime - 15; 
+        setInitialTime(newTime);
+        setTimeRemaining(newTime);
+    }
+  };
+  
+
   const handleStopSession = (isFinished = false) => {
     setIsRunning(false);
     
-    if (timeRemaining < DEFAULT_TIME) {
-      const sessionDuration = DEFAULT_TIME - timeRemaining; 
+    if (timeRemaining < initialTime) {
+      const sessionDuration = initialTime - timeRemaining; 
       const formattedDuration = formatTime(sessionDuration);
 
       const newSession = {
@@ -51,7 +68,6 @@ const Timer = ({ category }) => {
 
       saveSession(newSession); 
       
-      
       setLastSessionData({
         duration: formattedDuration,
         category: newSession.category,
@@ -61,7 +77,7 @@ const Timer = ({ category }) => {
       setModalVisible(true);
     }
 
-    setTimeRemaining(DEFAULT_TIME);
+    setTimeRemaining(initialTime);
     setDistractionCount(0);
   };
 
@@ -112,20 +128,30 @@ const Timer = ({ category }) => {
     );
   };
 
-  
   const timerColor = timeRemaining < 60 ? '#e74c3c' : '#2c3e50';
 
   return (
     <View style={styles.container}>
-      
-      
       <View style={[styles.timerCircle, { borderColor: isRunning ? '#4F8EF7' : '#e0e0e0' }]}>
-        <Text style={[styles.timerText, { color: timerColor }]}>
-            {formatTime(timeRemaining)}
-        </Text>
+        <View style={styles.timeDisplayContainer}>
+            {!isRunning && (
+                <TouchableOpacity onPress={decreaseTime} style={styles.adjustButton}>
+                    <Ionicons name="remove-circle-outline" size={35} color="#95a5a6" />
+                </TouchableOpacity>
+            )}
+
+            <Text style={[styles.timerText, { color: timerColor }]}>
+                {formatTime(timeRemaining)}
+            </Text>
+            {!isRunning && (
+                <TouchableOpacity onPress={increaseTime} style={styles.adjustButton}>
+                    <Ionicons name="add-circle-outline" size={35} color="#95a5a6" />
+                </TouchableOpacity>
+            )}
+        </View>
+
         <Text style={styles.categoryLabel}>{category}</Text>
         
-       
         <View style={styles.progressBarContainer}>
             <View style={[styles.progressBarFill, { width: `${progressPercent}%`, backgroundColor: timerColor }]} />
         </View>
@@ -196,9 +222,9 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   timerCircle: {
-    width: 260,
-    height: 260,
-    borderRadius: 130,
+    width: 280,
+    height: 280,
+    borderRadius: 140,
     borderWidth: 8,
     justifyContent: 'center',
     alignItems: 'center',
@@ -211,13 +237,23 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
   },
+  timeDisplayContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: 5,
+  },
+  adjustButton: {
+      padding: 10,
+  },
   timerText: {
-    fontSize: 65,
+    fontSize: 55,
     fontWeight: '300',
-    marginBottom: 5,
+    marginHorizontal: 5,
+    fontVariant: ['tabular-nums'],
   },
   categoryLabel: {
-    fontSize: 20,
+    fontSize: 18,
     color: '#95a5a6',
     fontWeight: '600',
     marginBottom: 15,
@@ -286,7 +322,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginLeft: 8,
   },
-
   modalOverlay: {
       flex: 1,
       justifyContent: "center",
